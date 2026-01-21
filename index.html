@@ -16,16 +16,39 @@
     <style>
         #map { height: 65vh; width: 100%; z-index: 1; transition: height 0.3s ease; }
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-        .glass-panel { background: rgba(255, 255, 255, 0.98); backdrop-filter: blur(10px); }
         .material-btn.active { background-color: #15803d; color: white; border-color: #15803d; transform: scale(1.05); }
         .search-container { position: absolute; top: 75px; left: 10px; right: 10px; z-index: 1000; }
         input[type="number"] { -moz-appearance: textfield; }
         input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
         .history-panel { max-height: 25vh; overflow-y: auto; }
         
-        /* Custom scrollbar for a cleaner look */
-        .history-panel::-webkit-scrollbar { width: 4px; }
-        .history-panel::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+        .map-actions {
+            position: absolute;
+            right: 12px;
+            top: 140px;
+            z-index: 1000;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .map-tool-btn {
+            background: rgba(255, 255, 255, 0.95);
+            width: 44px;
+            height: 44px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            color: #1e293b;
+            transition: all 0.2s;
+        }
+        .map-tool-btn.active-mode {
+            background: #ef4444;
+            color: white;
+            box-shadow: 0 0 15px rgba(239, 68, 68, 0.5);
+        }
+        .map-tool-btn:active { transform: scale(0.9); }
     </style>
 </head>
 <body class="bg-gray-100 h-screen flex flex-col overflow-hidden">
@@ -42,36 +65,46 @@
         </div>
     </div>
 
-    <!-- Search Bar Overlay -->
+    <!-- Search Bar -->
     <div class="search-container">
         <div class="flex shadow-2xl rounded-xl overflow-hidden border border-gray-200">
-            <input type="text" id="address-input" placeholder="Search address or neighborhood..." 
+            <input type="text" id="address-input" placeholder="Search address..." 
                    class="flex-1 p-3 outline-none text-sm font-medium bg-white/95 backdrop-blur-md">
             <button id="search-btn" class="bg-green-700 text-white px-5 font-bold text-sm active:bg-green-800 transition-colors">Find</button>
         </div>
     </div>
 
     <!-- Map Area -->
-    <div id="map"></div>
+    <div class="relative">
+        <div id="map"></div>
+        
+        <div class="map-actions">
+            <button id="capture-view-btn" class="map-tool-btn" title="Fit to View">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M12 8v8"/><path d="M8 12h8"/></svg>
+            </button>
+            <button id="deduct-mode-btn" class="map-tool-btn" title="Subtract Area">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+            </button>
+            <button id="clear-map-btn" class="map-tool-btn text-red-600" title="Clear All">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+            </button>
+        </div>
+    </div>
 
-    <!-- Bottom Controls Sheet -->
+    <!-- Bottom Sheet -->
     <div class="flex-1 bg-white shadow-[0_-10px_30px_rgba(0,0,0,0.15)] z-50 overflow-y-auto rounded-t-[2.5rem] border-t border-gray-100">
-        <!-- Pull Handle Indicator -->
         <div class="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mt-3 mb-1"></div>
         
         <div class="p-5 space-y-5">
-            
-            <!-- Quick Material Selection -->
             <div class="grid grid-cols-3 gap-2">
                 <button onclick="setMaterial('Mulch', 3, 45)" class="material-btn active border border-gray-200 py-2.5 rounded-xl text-[11px] font-black uppercase transition-all" id="btn-mulch">Mulch</button>
                 <button onclick="setMaterial('Sod', 1, 350)" class="material-btn border border-gray-200 py-2.5 rounded-xl text-[11px] font-black uppercase transition-all" id="btn-sod">Sod</button>
                 <button onclick="setMaterial('Dirt/Rock', 4, 65)" class="material-btn border border-gray-200 py-2.5 rounded-xl text-[11px] font-black uppercase transition-all" id="btn-dirt">Fill</button>
             </div>
 
-            <!-- Stats & Pricing Display -->
             <div class="grid grid-cols-2 gap-3">
                 <div class="bg-emerald-50 p-4 rounded-2xl border border-emerald-100">
-                    <span class="text-[9px] font-black uppercase text-emerald-700 tracking-wider block mb-1">Area Coverage</span>
+                    <span class="text-[9px] font-black uppercase text-emerald-700 tracking-wider block mb-1">Net Area (Deducted)</span>
                     <div class="flex items-baseline">
                         <span id="area-display" class="text-2xl font-mono font-black text-emerald-900">0.0</span>
                         <span class="text-[10px] font-bold text-emerald-700 ml-1">SQ FT</span>
@@ -96,23 +129,20 @@
                 </div>
             </div>
 
-            <!-- Sliders -->
             <div class="grid grid-cols-2 gap-6 pt-2">
                 <div class="space-y-2">
                     <label class="text-[10px] font-black uppercase text-gray-400 tracking-tighter">Depth (Inches)</label>
-                    <input type="range" id="depth-slider" min="0.5" max="12" step="0.5" value="3" 
-                           class="w-full h-2 bg-gray-200 rounded-lg appearance-none accent-green-700">
+                    <input type="range" id="depth-slider" min="0.5" max="12" step="0.5" value="3" class="w-full h-2 bg-gray-200 rounded-lg appearance-none accent-green-700">
                 </div>
                 <div class="space-y-2">
                     <label class="text-[10px] font-black uppercase text-gray-400 tracking-tighter block">Price per Yd³</label>
                     <div class="relative">
                         <span class="absolute left-2 top-1.5 text-gray-400 text-xs">$</span>
-                        <input type="number" id="price-input" value="45" class="w-full bg-gray-50 border border-gray-200 rounded-lg py-1.5 pl-5 pr-2 font-bold text-sm outline-none focus:border-green-500 transition-colors">
+                        <input type="number" id="price-input" value="45" class="w-full bg-gray-50 border border-gray-200 rounded-lg py-1.5 pl-5 pr-2 font-bold text-sm outline-none">
                     </div>
                 </div>
             </div>
 
-            <!-- Final Actions -->
             <div class="grid grid-cols-3 gap-3 pb-8">
                 <button id="gps-btn" class="bg-blue-600 text-white font-black py-4 rounded-2xl shadow-lg active:scale-95 flex flex-col items-center justify-center transition-all">
                     <span class="text-xs uppercase">Walk</span>
@@ -129,9 +159,8 @@
             </div>
 
             <div id="history-container" class="hidden border-t border-slate-100 pt-4 space-y-3 pb-24">
-                <div class="flex justify-between items-center">
-                    <h3 class="text-[10px] font-black uppercase text-slate-400 tracking-widest">Recent Estimates</h3>
-                    <button onclick="localStorage.removeItem('yardstick_jobs'); jobs=[]; renderHistory();" class="text-[9px] text-red-400 uppercase font-bold">Clear All</button>
+                <div class="flex justify-between items-center mb-2">
+                    <h3 class="text-[10px] font-black uppercase text-slate-400 tracking-widest">Estimates & Pin Sets</h3>
                 </div>
                 <div id="history-list" class="history-panel space-y-2"></div>
             </div>
@@ -140,175 +169,203 @@
 
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script>
-        let map, polygon, points = [], markers = [];
+        let map, mainPolygon, cutoutPolygon;
+        let points = [], markers = [];
+        let cutoutPoints = [], cutoutMarkers = [];
+        let isDeductMode = false;
         let isRecording = false, watchId = null;
         let currentMaterial = "Mulch";
+        let currentDepth = 3;
+        let currentPrice = 45;
         let jobs = JSON.parse(localStorage.getItem('yardstick_jobs') || '[]');
 
         function initMap() {
-            // Defaulting to Jacksonville, FL
-            map = L.map('map', { 
-                zoomControl: false,
-                attributionControl: false 
-            }).setView([30.3322, -81.6557], 18);
+            map = L.map('map', { zoomControl: false, attributionControl: false, maxZoom: 20 })
+                   .setView([30.3322, -81.6557], 18);
             
-            // Premium Satellite Layer
-            L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
-                maxZoom: 19
-            }).addTo(map);
+            L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 20 }).addTo(map);
+            L.tileLayer('https://stamen-tiles-{s}.a.ssl.fastly.net/toner-labels/{z}/{x}/{y}{r}.png', { subdomains: 'abcd', maxZoom: 20, opacity: 0.6 }).addTo(map);
 
             map.on('click', (e) => addPoint(e.latlng.lat, e.latlng.lng));
-            
-            // Gentle intro locate
             map.locate({setView: true, maxZoom: 18});
             renderHistory();
         }
 
-        async function searchAddress() {
-            const query = document.getElementById('address-input').value;
-            const btn = document.getElementById('search-btn');
-            if(!query) return;
+        function toggleDeductMode() {
+            isDeductMode = !isDeductMode;
+            const btn = document.getElementById('deduct-mode-btn');
+            if (isDeductMode) btn.classList.add('active-mode');
+            else btn.classList.remove('active-mode');
+        }
+
+        function addPoint(lat, lng) {
+            if (isDeductMode) {
+                cutoutPoints.push([lng, lat]);
+                const marker = L.circleMarker([lat, lng], { radius: 6, fillColor: "#ef4444", color: "#fff", weight: 2, fillOpacity: 1 }).addTo(map);
+                cutoutMarkers.push(marker);
+            } else {
+                points.push([lng, lat]);
+                const marker = L.circleMarker([lat, lng], { radius: 7, fillColor: "#10b981", color: "#fff", weight: 3, fillOpacity: 1 }).addTo(map);
+                markers.push(marker);
+            }
+            updateShape();
+        }
+
+        function undoLast() {
+            if (isDeductMode && cutoutPoints.length > 0) {
+                cutoutPoints.pop();
+                map.removeLayer(cutoutMarkers.pop());
+            } else if (!isDeductMode && points.length > 0) {
+                points.pop();
+                map.removeLayer(markers.pop());
+            }
+            updateShape();
+        }
+
+        function clearPins() {
+            points = []; markers.forEach(m => map.removeLayer(m)); markers = [];
+            cutoutPoints = []; cutoutMarkers.forEach(m => map.removeLayer(m)); cutoutMarkers = [];
+            updateShape();
+        }
+
+        function updateShape() {
+            if (mainPolygon) map.removeLayer(mainPolygon);
+            if (cutoutPolygon) map.removeLayer(cutoutPolygon);
             
-            btn.innerText = "...";
+            let totalArea = 0;
+            let deductionArea = 0;
+
+            if (points.length >= 3) {
+                const poly = turf.polygon([[...points, points[0]]]);
+                totalArea = turf.area(poly) * 10.7639;
+                mainPolygon = L.polygon(points.map(p => [p[1], p[0]]), { color: '#10b981', fillColor: '#10b981', fillOpacity: 0.35, weight: 3 }).addTo(map);
+            }
+
+            if (cutoutPoints.length >= 3) {
+                const polyC = turf.polygon([[...cutoutPoints, cutoutPoints[0]]]);
+                deductionArea = turf.area(polyC) * 10.7639;
+                cutoutPolygon = L.polygon(cutoutPoints.map(p => [p[1], p[0]]), { color: '#ef4444', fillColor: '#ef4444', fillOpacity: 0.5, weight: 2, dashArray: '5,5' }).addTo(map);
+            }
+
+            const netArea = Math.max(0, totalArea - deductionArea);
+            document.getElementById('area-display').innerText = netArea.toLocaleString(undefined, {maximumFractionDigits: 1});
+
+            currentDepth = document.getElementById('depth-slider').value;
+            currentPrice = document.getElementById('price-input').value;
+            document.getElementById('depth-label').innerText = currentDepth + '" Deep';
+            
+            const cubicYards = (netArea * (currentDepth / 12)) / 27;
+            const totalCost = cubicYards * currentPrice;
+
+            document.getElementById('volume-display').innerText = cubicYards.toFixed(2);
+            document.getElementById('cost-display').innerText = '$' + totalCost.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        }
+
+        document.getElementById('search-btn').addEventListener('click', async () => {
+            const query = document.getElementById('address-input').value;
+            if(!query) return;
             try {
                 const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`);
                 const data = await res.json();
-                if(data.length > 0) {
-                    const { lat, lon } = data[0];
-                    map.setView([lat, lon], 19);
-                } else {
-                    alert("Property not found. Try adding city/state.");
-                }
-            } catch (e) { alert("Search service busy. Try again."); }
-            btn.innerText = "Find";
-        }
+                if(data.length > 0) map.setView([data[0].lat, data[0].lon], 19);
+            } catch (e) { console.error(e); }
+        });
+
+        document.getElementById('deduct-mode-btn').addEventListener('click', toggleDeductMode);
+        document.getElementById('undo-btn').addEventListener('click', undoLast);
+        document.getElementById('capture-view-btn').addEventListener('click', () => {
+            clearPins();
+            const b = map.getBounds();
+            addPoint(b.getNorthWest().lat, b.getNorthWest().lng);
+            addPoint(b.getNorthEast().lat, b.getNorthEast().lng);
+            addPoint(b.getSouthEast().lat, b.getSouthEast().lng);
+            addPoint(b.getSouthWest().lat, b.getSouthWest().lng);
+        });
+        document.getElementById('clear-map-btn').addEventListener('click', clearPins);
+        document.getElementById('depth-slider').addEventListener('input', updateShape);
+        document.getElementById('price-input').addEventListener('input', updateShape);
 
         function setMaterial(name, depth, price) {
             currentMaterial = name;
             document.getElementById('mat-name-display').innerText = name;
             document.getElementById('depth-slider').value = depth;
             document.getElementById('price-input').value = price;
-            document.querySelectorAll('.material-btn').forEach(btn => btn.classList.remove('active'));
-            document.getElementById(`btn-${name.toLowerCase().split('/')[0]}`).classList.add('active');
+            document.querySelectorAll('.material-btn').forEach(b => b.classList.remove('active'));
+            event.target.classList.add('active');
             updateShape();
         }
-
-        function addPoint(lat, lng) {
-            points.push([lng, lat]);
-            const marker = L.circleMarker([lat, lng], {
-                radius: 7, fillColor: "#10b981", color: "#fff", weight: 3, opacity: 1, fillOpacity: 1
-            }).addTo(map);
-            markers.push(marker);
-            updateShape();
-        }
-
-        function undoLast() {
-            if(points.length === 0) return;
-            points.pop();
-            const lastMarker = markers.pop();
-            if(lastMarker) map.removeLayer(lastMarker);
-            
-            const btn = document.getElementById('undo-btn');
-            btn.classList.add('bg-white/40');
-            setTimeout(() => btn.classList.remove('bg-white/40'), 200);
-            
-            updateShape();
-        }
-
-        function updateShape() {
-            if (polygon) map.removeLayer(polygon);
-            
-            if (points.length < 3) {
-                document.getElementById('area-display').innerText = '0.0';
-                document.getElementById('volume-display').innerText = '0.00';
-                document.getElementById('cost-display').innerText = '$0.00';
-                return;
-            }
-
-            const poly = turf.polygon([[...points, points[0]]]);
-            const areaSqFt = turf.area(poly) * 10.7639;
-            document.getElementById('area-display').innerText = areaSqFt.toLocaleString(undefined, {maximumFractionDigits: 1});
-
-            polygon = L.polygon(points.map(p => [p[1], p[0]]), {
-                color: '#10b981', fillColor: '#10b981', fillOpacity: 0.35, weight: 3, dashArray: '8, 8'
-            }).addTo(map);
-
-            const depth = document.getElementById('depth-slider').value;
-            const price = document.getElementById('price-input').value;
-            document.getElementById('depth-label').innerText = depth + '" Deep';
-            
-            const cubicYards = (areaSqFt * (depth / 12)) / 27;
-            const totalCost = cubicYards * price;
-
-            document.getElementById('volume-display').innerText = cubicYards.toFixed(2);
-            document.getElementById('cost-display').innerText = '$' + totalCost.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
-        }
-
-        document.getElementById('search-btn').addEventListener('click', searchAddress);
-        document.getElementById('address-input').addEventListener('keypress', (e) => { if(e.key === 'Enter') searchAddress(); });
-        document.getElementById('undo-btn').addEventListener('click', undoLast);
-        document.getElementById('depth-slider').addEventListener('input', updateShape);
-        document.getElementById('price-input').addEventListener('input', updateShape);
-        
-        document.getElementById('gps-btn').addEventListener('click', function() {
-            const btn = this;
-            const indicator = document.getElementById('gps-indicator');
-            if (!isRecording) {
-                isRecording = true;
-                btn.classList.replace('bg-blue-600', 'bg-red-600');
-                btn.querySelector('span:first-child').innerText = "Stop";
-                indicator.classList.replace('bg-red-500', 'bg-green-500');
-                indicator.classList.add('animate-pulse');
-                watchId = navigator.geolocation.watchPosition((pos) => {
-                    if (pos.coords.accuracy < 25) {
-                        addPoint(pos.coords.latitude, pos.coords.longitude);
-                        map.panTo([pos.coords.latitude, pos.coords.longitude]);
-                    }
-                }, null, { enableHighAccuracy: true });
-            } else {
-                isRecording = false;
-                btn.classList.replace('bg-red-600', 'bg-blue-600');
-                btn.querySelector('span:first-child').innerText = "Walk";
-                indicator.classList.replace('bg-green-500', 'bg-red-500');
-                indicator.classList.remove('animate-pulse');
-                navigator.geolocation.clearWatch(watchId);
-            }
-        });
 
         document.getElementById('save-btn').addEventListener('click', () => {
-            if (points.length < 3) return alert("Plot an area first!");
-            const jobName = prompt("Project Name:", "Client " + (jobs.length + 1));
+            if (points.length < 3) return alert("Plot at least 3 points to save!");
+            const jobName = prompt("Project Name/Address:", document.getElementById('address-input').value || "Client " + (jobs.length + 1));
             if (!jobName) return;
+            
             jobs.unshift({
-                id: Date.now(), name: jobName, material: currentMaterial,
+                id: Date.now(),
+                name: jobName,
+                material: currentMaterial,
+                depth: currentDepth,
+                price: currentPrice,
                 area: document.getElementById('area-display').innerText,
                 volume: document.getElementById('volume-display').innerText,
                 cost: document.getElementById('cost-display').innerText,
-                date: new Date().toLocaleDateString()
+                date: new Date().toLocaleDateString(),
+                // Persistent spatial data
+                pinData: JSON.stringify(points),
+                cutoutData: JSON.stringify(cutoutPoints),
+                center: [map.getCenter().lat, map.getCenter().lng],
+                zoom: map.getZoom()
             });
+            
             localStorage.setItem('yardstick_jobs', JSON.stringify(jobs));
             renderHistory();
         });
 
+        function restoreJob(id) {
+            const job = jobs.find(j => j.id === id);
+            if (!job) return;
+            
+            clearPins();
+            
+            // Restore context
+            map.setView(job.center, job.zoom);
+            setMaterial(job.material, job.depth, job.price);
+            
+            // Re-pin spatial data
+            const savedPoints = JSON.parse(job.pinData);
+            const savedCutouts = JSON.parse(job.cutoutData);
+            
+            isDeductMode = false;
+            savedPoints.forEach(p => addPoint(p[1], p[0]));
+            
+            isDeductMode = true;
+            savedCutouts.forEach(p => addPoint(p[1], p[0]));
+            
+            isDeductMode = false;
+            document.getElementById('deduct-mode-btn').classList.remove('active-mode');
+            
+            document.getElementById('history-container').classList.add('hidden');
+        }
+
         function renderHistory() {
             const list = document.getElementById('history-list');
-            list.innerHTML = jobs.length === 0 ? '<p class="text-slate-400 text-[10px] italic text-center py-4">No logged estimates found.</p>' : '';
+            list.innerHTML = jobs.length === 0 ? '<p class="text-slate-400 text-center py-4 text-xs">No saved measurements.</p>' : '';
             jobs.forEach(job => {
                 const div = document.createElement('div');
-                div.className = "p-4 bg-slate-50 border border-slate-100 rounded-2xl flex justify-between items-center active:bg-slate-100 transition-colors";
+                div.className = "p-3 bg-slate-50 border rounded-xl flex justify-between items-center";
                 div.innerHTML = `
-                    <div class="flex-1">
-                        <div class="flex justify-between items-start">
-                            <h4 class="font-black text-slate-800 text-xs truncate w-32">${job.name}</h4>
-                            <span class="text-[8px] text-slate-400 font-bold uppercase">${job.date}</span>
+                    <div class="flex-1 cursor-pointer" onclick="restoreJob(${job.id})">
+                        <div class="flex items-center gap-1">
+                            <h4 class="font-bold text-xs truncate w-32">${job.name}</h4>
+                            <svg class="text-blue-500" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
                         </div>
-                        <p class="text-[10px] text-slate-500 font-medium mt-0.5">${job.material} • ${job.area} ft²</p>
-                        <div class="flex items-center space-x-2 mt-1">
-                            <span class="text-xs font-black text-blue-600">${job.volume} yd³</span>
-                            <span class="text-xs font-black text-green-700">${job.cost}</span>
-                        </div>
+                        <p class="text-[10px] text-slate-500">${job.area} ft² • ${job.cost}</p>
+                        <p class="text-[8px] text-slate-400 uppercase font-bold">${job.date}</p>
                     </div>
-                    <button onclick="deleteJob(${job.id})" class="ml-4 text-slate-300 active:text-red-500 p-2 text-sm">✕</button>
+                    <div class="flex gap-2">
+                        <button onclick="restoreJob(${job.id})" class="bg-blue-100 text-blue-600 px-2 py-1 rounded-md text-[9px] font-bold">RE-PIN</button>
+                        <button onclick="deleteJob(${job.id})" class="text-slate-300 px-1">✕</button>
+                    </div>
                 `;
                 list.appendChild(div);
             });
@@ -320,8 +377,25 @@
             renderHistory();
         };
 
-        document.getElementById('history-toggle').addEventListener('click', () => {
-            document.getElementById('history-container').classList.toggle('hidden');
+        document.getElementById('history-toggle').addEventListener('click', () => document.getElementById('history-container').classList.toggle('hidden'));
+        
+        document.getElementById('gps-btn').addEventListener('click', function() {
+            if (!isRecording) {
+                isRecording = true;
+                this.classList.replace('bg-blue-600', 'bg-red-600');
+                this.querySelector('span:first-child').innerText = "Stop";
+                watchId = navigator.geolocation.watchPosition((pos) => {
+                    if (pos.coords.accuracy < 25) {
+                        addPoint(pos.coords.latitude, pos.coords.longitude);
+                        map.panTo([pos.coords.latitude, pos.coords.longitude]);
+                    }
+                }, null, { enableHighAccuracy: true });
+            } else {
+                isRecording = false;
+                this.classList.replace('bg-red-600', 'bg-blue-600');
+                this.querySelector('span:first-child').innerText = "Walk";
+                navigator.geolocation.clearWatch(watchId);
+            }
         });
 
         window.onload = initMap;
