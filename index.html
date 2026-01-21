@@ -14,13 +14,10 @@
     <script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
 
     <style>
-        #map { height: 65vh; width: 100%; z-index: 1; transition: height 0.3s ease; }
+        #map { height: 60vh; width: 100%; z-index: 1; transition: height 0.3s ease; }
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
         .material-btn.active { background-color: #15803d; color: white; border-color: #15803d; transform: scale(1.05); }
         .search-container { position: absolute; top: 75px; left: 10px; right: 10px; z-index: 1000; }
-        input[type="number"] { -moz-appearance: textfield; }
-        input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
-        .history-panel { max-height: 25vh; overflow-y: auto; }
         
         .map-actions {
             position: absolute;
@@ -33,9 +30,9 @@
         }
         .map-tool-btn {
             background: rgba(255, 255, 255, 0.95);
-            width: 44px;
-            height: 44px;
-            border-radius: 12px;
+            width: 48px;
+            height: 48px;
+            border-radius: 14px;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -43,12 +40,52 @@
             color: #1e293b;
             transition: all 0.2s;
         }
-        .map-tool-btn.active-mode {
-            background: #ef4444;
-            color: white;
-            box-shadow: 0 0 15px rgba(239, 68, 68, 0.5);
+        .map-tool-btn.active-mode { background: #ef4444; color: white; }
+        
+        /* Precision Crosshair */
+        .crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 30px;
+            height: 30px;
+            margin-top: -15px;
+            margin-left: -15px;
+            z-index: 1001;
+            pointer-events: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
-        .map-tool-btn:active { transform: scale(0.9); }
+        .crosshair::before, .crosshair::after {
+            content: '';
+            position: absolute;
+            background: rgba(255, 255, 255, 0.8);
+            box-shadow: 0 0 2px black;
+        }
+        .crosshair::before { width: 1px; height: 100%; }
+        .crosshair::after { height: 1px; width: 100%; }
+        .center-dot { width: 4px; height: 4px; background: #10b981; border-radius: 50%; border: 1px solid white; z-index: 2;}
+
+        /* Drop Pin UI */
+        .drop-pin-trigger {
+            position: absolute;
+            bottom: 42%;
+            right: 12px;
+            z-index: 1001;
+        }
+        .drop-btn {
+            background: #10b981;
+            color: white;
+            padding: 12px 20px;
+            border-radius: 50px;
+            font-weight: 800;
+            font-size: 12px;
+            box-shadow: 0 8px 20px rgba(16, 185, 129, 0.4);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
     </style>
 </head>
 <body class="bg-gray-100 h-screen flex flex-col overflow-hidden">
@@ -57,113 +94,90 @@
     <div class="bg-green-900 text-white p-3 pt-8 shadow-md flex justify-between items-center z-50">
         <div>
             <h1 class="text-lg font-black tracking-tight leading-none">YardStick PRO</h1>
-            <span class="text-[9px] uppercase tracking-widest opacity-60">Professional Grade</span>
+            <span class="text-[9px] uppercase tracking-widest opacity-60">High Resolution Precision</span>
         </div>
         <div class="flex items-center space-x-3">
-            <div id="gps-indicator" class="h-3 w-3 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]"></div>
-            <button id="undo-btn" class="bg-white/10 active:bg-white/30 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-colors">Undo Pin</button>
+            <div id="gps-indicator" class="h-3 w-3 rounded-full bg-red-500"></div>
+            <button id="undo-btn" class="bg-white/10 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase">Undo Pin</button>
         </div>
     </div>
 
-    <!-- Search Bar -->
+    <!-- Search -->
     <div class="search-container">
         <div class="flex shadow-2xl rounded-xl overflow-hidden border border-gray-200">
-            <input type="text" id="address-input" placeholder="Search address..." 
-                   class="flex-1 p-3 outline-none text-sm font-medium bg-white/95 backdrop-blur-md">
-            <button id="search-btn" class="bg-green-700 text-white px-5 font-bold text-sm active:bg-green-800 transition-colors">Find</button>
+            <input type="text" id="address-input" placeholder="Enter Property Address..." class="flex-1 p-3 outline-none text-sm font-medium bg-white/95">
+            <button id="search-btn" class="bg-green-700 text-white px-5 font-bold text-sm">Find</button>
         </div>
     </div>
 
-    <!-- Map Area -->
-    <div class="relative">
+    <!-- Map Viewport -->
+    <div class="relative flex-1">
         <div id="map"></div>
         
+        <!-- Precision Targeting -->
+        <div class="crosshair">
+            <div class="center-dot"></div>
+        </div>
+
+        <div class="drop-pin-trigger">
+            <button id="manual-drop-btn" class="drop-btn active:scale-90 transition-transform">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                DROP PIN
+            </button>
+        </div>
+
         <div class="map-actions">
             <button id="capture-view-btn" class="map-tool-btn" title="Fit to View">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M12 8v8"/><path d="M8 12h8"/></svg>
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M12 8v8"/><path d="M8 12h8"/></svg>
             </button>
             <button id="deduct-mode-btn" class="map-tool-btn" title="Subtract Area">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
             </button>
             <button id="clear-map-btn" class="map-tool-btn text-red-600" title="Clear All">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
             </button>
         </div>
     </div>
 
-    <!-- Bottom Sheet -->
-    <div class="flex-1 bg-white shadow-[0_-10px_30px_rgba(0,0,0,0.15)] z-50 overflow-y-auto rounded-t-[2.5rem] border-t border-gray-100">
-        <div class="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mt-3 mb-1"></div>
+    <!-- Stats Sheet -->
+    <div class="bg-white shadow-[0_-10px_30px_rgba(0,0,0,0.15)] z-50 overflow-y-auto rounded-t-[2.5rem] p-5">
+        <div class="w-12 h-1.5 bg-gray-200 rounded-full mx-auto mb-4"></div>
         
-        <div class="p-5 space-y-5">
-            <div class="grid grid-cols-3 gap-2">
-                <button onclick="setMaterial('Mulch', 3, 45)" class="material-btn active border border-gray-200 py-2.5 rounded-xl text-[11px] font-black uppercase transition-all" id="btn-mulch">Mulch</button>
-                <button onclick="setMaterial('Sod', 1, 350)" class="material-btn border border-gray-200 py-2.5 rounded-xl text-[11px] font-black uppercase transition-all" id="btn-sod">Sod</button>
-                <button onclick="setMaterial('Dirt/Rock', 4, 65)" class="material-btn border border-gray-200 py-2.5 rounded-xl text-[11px] font-black uppercase transition-all" id="btn-dirt">Fill</button>
+        <div class="grid grid-cols-2 gap-3 mb-4">
+            <div class="bg-emerald-50 p-4 rounded-2xl border border-emerald-100">
+                <span class="text-[9px] font-black uppercase text-emerald-700 block mb-1">Net Coverage</span>
+                <div class="flex items-baseline">
+                    <span id="area-display" class="text-2xl font-mono font-black text-emerald-900">0.0</span>
+                    <span class="text-[10px] font-bold text-emerald-700 ml-1">SQ FT</span>
+                </div>
             </div>
+            <div class="bg-blue-50 p-4 rounded-2xl border border-blue-100">
+                <span class="text-[9px] font-black uppercase text-blue-700 block mb-1">Cubic Volume</span>
+                <div class="flex items-baseline">
+                    <span id="volume-display" class="text-2xl font-mono font-black text-blue-900">0.00</span>
+                    <span class="text-[10px] font-bold text-blue-700 ml-1">YD³</span>
+                </div>
+            </div>
+        </div>
 
-            <div class="grid grid-cols-2 gap-3">
-                <div class="bg-emerald-50 p-4 rounded-2xl border border-emerald-100">
-                    <span class="text-[9px] font-black uppercase text-emerald-700 tracking-wider block mb-1">Net Area (Deducted)</span>
-                    <div class="flex items-baseline">
-                        <span id="area-display" class="text-2xl font-mono font-black text-emerald-900">0.0</span>
-                        <span class="text-[10px] font-bold text-emerald-700 ml-1">SQ FT</span>
-                    </div>
-                </div>
-                <div class="bg-blue-50 p-4 rounded-2xl border border-blue-100">
-                    <span class="text-[9px] font-black uppercase text-blue-700 tracking-wider block mb-1">Material Needed</span>
-                    <div class="flex items-baseline">
-                        <span id="volume-display" class="text-2xl font-mono font-black text-blue-900">0.00</span>
-                        <span class="text-[10px] font-bold text-blue-700 ml-1">YD³</span>
-                    </div>
-                </div>
-                <div class="col-span-2 bg-slate-900 p-5 rounded-2xl flex justify-between items-center shadow-lg">
-                    <div>
-                        <span class="text-[9px] font-black uppercase text-slate-400 tracking-widest block mb-1">Project Estimate</span>
-                        <span id="cost-display" class="text-3xl font-mono font-black text-white">$0.00</span>
-                    </div>
-                    <div class="text-right">
-                        <span id="depth-label" class="text-emerald-400 font-black text-sm block">3.0" Deep</span>
-                        <span id="mat-name-display" class="text-slate-400 text-[9px] uppercase font-bold tracking-widest">Mulch</span>
-                    </div>
-                </div>
+        <div class="bg-slate-900 p-4 rounded-2xl flex justify-between items-center mb-6">
+            <div>
+                <span class="text-[9px] font-black uppercase text-slate-400 block mb-1">Est. Total</span>
+                <span id="cost-display" class="text-2xl font-mono font-black text-white">$0.00</span>
             </div>
+            <div class="text-right">
+                <span id="depth-label" class="text-emerald-400 font-black text-sm block">3.0" Depth</span>
+                <span id="mat-name-display" class="text-slate-400 text-[9px] uppercase font-bold tracking-widest">Mulch</span>
+            </div>
+        </div>
 
-            <div class="grid grid-cols-2 gap-6 pt-2">
-                <div class="space-y-2">
-                    <label class="text-[10px] font-black uppercase text-gray-400 tracking-tighter">Depth (Inches)</label>
-                    <input type="range" id="depth-slider" min="0.5" max="12" step="0.5" value="3" class="w-full h-2 bg-gray-200 rounded-lg appearance-none accent-green-700">
-                </div>
-                <div class="space-y-2">
-                    <label class="text-[10px] font-black uppercase text-gray-400 tracking-tighter block">Price per Yd³</label>
-                    <div class="relative">
-                        <span class="absolute left-2 top-1.5 text-gray-400 text-xs">$</span>
-                        <input type="number" id="price-input" value="45" class="w-full bg-gray-50 border border-gray-200 rounded-lg py-1.5 pl-5 pr-2 font-bold text-sm outline-none">
-                    </div>
-                </div>
-            </div>
+        <div class="grid grid-cols-2 gap-3 mb-6">
+            <button id="save-btn" class="bg-green-700 text-white font-black py-4 rounded-2xl shadow-lg active:scale-95">SAVE PROJECT</button>
+            <button id="history-toggle" class="bg-slate-100 border text-slate-700 font-black py-4 rounded-2xl active:scale-95">HISTORY</button>
+        </div>
 
-            <div class="grid grid-cols-3 gap-3 pb-8">
-                <button id="gps-btn" class="bg-blue-600 text-white font-black py-4 rounded-2xl shadow-lg active:scale-95 flex flex-col items-center justify-center transition-all">
-                    <span class="text-xs uppercase">Walk</span>
-                    <span class="text-[9px] font-medium opacity-60">Live GPS</span>
-                </button>
-                <button id="save-btn" class="bg-green-700 text-white font-black py-4 rounded-2xl shadow-lg active:scale-95 flex flex-col items-center justify-center transition-all">
-                    <span class="text-xs uppercase">Save</span>
-                    <span class="text-[9px] font-medium opacity-60">Record</span>
-                </button>
-                <button id="history-toggle" class="bg-slate-100 border border-slate-200 text-slate-700 font-black py-4 rounded-2xl active:scale-95 flex flex-col items-center justify-center transition-all">
-                    <span class="text-xs uppercase">Logs</span>
-                    <span class="text-[9px] font-medium opacity-60">History</span>
-                </button>
-            </div>
-
-            <div id="history-container" class="hidden border-t border-slate-100 pt-4 space-y-3 pb-24">
-                <div class="flex justify-between items-center mb-2">
-                    <h3 class="text-[10px] font-black uppercase text-slate-400 tracking-widest">Estimates & Pin Sets</h3>
-                </div>
-                <div id="history-list" class="history-panel space-y-2"></div>
-            </div>
+        <div id="history-container" class="hidden pb-10">
+            <div id="history-list" class="history-panel space-y-2"></div>
         </div>
     </div>
 
@@ -173,58 +187,51 @@
         let points = [], markers = [];
         let cutoutPoints = [], cutoutMarkers = [];
         let isDeductMode = false;
-        let isRecording = false, watchId = null;
-        let currentMaterial = "Mulch";
-        let currentDepth = 3;
-        let currentPrice = 45;
         let jobs = JSON.parse(localStorage.getItem('yardstick_jobs') || '[]');
 
         function initMap() {
-            map = L.map('map', { zoomControl: false, attributionControl: false, maxZoom: 20 })
-                   .setView([30.3322, -81.6557], 18);
+            // Enhanced zoom settings - maxZoom 22
+            map = L.map('map', { 
+                zoomControl: false, 
+                attributionControl: false, 
+                maxZoom: 22,
+                wheelPxPerZoomLevel: 60
+            }).setView([30.3322, -81.6557], 19);
             
-            L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 20 }).addTo(map);
-            L.tileLayer('https://stamen-tiles-{s}.a.ssl.fastly.net/toner-labels/{z}/{x}/{y}{r}.png', { subdomains: 'abcd', maxZoom: 20, opacity: 0.6 }).addTo(map);
+            // High Resolution Imagery
+            L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { 
+                maxZoom: 22,
+                maxNativeZoom: 19 // Upscales for detail past level 19
+            }).addTo(map);
 
-            map.on('click', (e) => addPoint(e.latlng.lat, e.latlng.lng));
-            map.locate({setView: true, maxZoom: 18});
+            // Street Labels
+            L.tileLayer('https://stamen-tiles-{s}.a.ssl.fastly.net/toner-labels/{z}/{x}/{y}{r}.png', { 
+                subdomains: 'abcd', 
+                maxZoom: 22, 
+                opacity: 0.5 
+            }).addTo(map);
+
+            L.control.scale({position: 'bottomleft', imperial: true, metric: false}).addTo(map);
+
+            map.locate({setView: true, maxZoom: 20});
             renderHistory();
         }
 
-        function toggleDeductMode() {
-            isDeductMode = !isDeductMode;
-            const btn = document.getElementById('deduct-mode-btn');
-            if (isDeductMode) btn.classList.add('active-mode');
-            else btn.classList.remove('active-mode');
+        function dropPinAtCenter() {
+            const center = map.getCenter();
+            addPoint(center.lat, center.lng);
         }
 
         function addPoint(lat, lng) {
             if (isDeductMode) {
                 cutoutPoints.push([lng, lat]);
-                const marker = L.circleMarker([lat, lng], { radius: 6, fillColor: "#ef4444", color: "#fff", weight: 2, fillOpacity: 1 }).addTo(map);
+                const marker = L.circleMarker([lat, lng], { radius: 5, fillColor: "#ef4444", color: "#fff", weight: 2, fillOpacity: 1 }).addTo(map);
                 cutoutMarkers.push(marker);
             } else {
                 points.push([lng, lat]);
-                const marker = L.circleMarker([lat, lng], { radius: 7, fillColor: "#10b981", color: "#fff", weight: 3, fillOpacity: 1 }).addTo(map);
+                const marker = L.circleMarker([lat, lng], { radius: 6, fillColor: "#10b981", color: "#fff", weight: 3, fillOpacity: 1 }).addTo(map);
                 markers.push(marker);
             }
-            updateShape();
-        }
-
-        function undoLast() {
-            if (isDeductMode && cutoutPoints.length > 0) {
-                cutoutPoints.pop();
-                map.removeLayer(cutoutMarkers.pop());
-            } else if (!isDeductMode && points.length > 0) {
-                points.pop();
-                map.removeLayer(markers.pop());
-            }
-            updateShape();
-        }
-
-        function clearPins() {
-            points = []; markers.forEach(m => map.removeLayer(m)); markers = [];
-            cutoutPoints = []; cutoutMarkers.forEach(m => map.removeLayer(m)); cutoutMarkers = [];
             updateShape();
         }
 
@@ -249,102 +256,10 @@
 
             const netArea = Math.max(0, totalArea - deductionArea);
             document.getElementById('area-display').innerText = netArea.toLocaleString(undefined, {maximumFractionDigits: 1});
-
-            currentDepth = document.getElementById('depth-slider').value;
-            currentPrice = document.getElementById('price-input').value;
-            document.getElementById('depth-label').innerText = currentDepth + '" Deep';
             
-            const cubicYards = (netArea * (currentDepth / 12)) / 27;
-            const totalCost = cubicYards * currentPrice;
-
+            const cubicYards = (netArea * (3 / 12)) / 27; // Defaulting to 3" for simple display
             document.getElementById('volume-display').innerText = cubicYards.toFixed(2);
-            document.getElementById('cost-display').innerText = '$' + totalCost.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
-        }
-
-        document.getElementById('search-btn').addEventListener('click', async () => {
-            const query = document.getElementById('address-input').value;
-            if(!query) return;
-            try {
-                const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`);
-                const data = await res.json();
-                if(data.length > 0) map.setView([data[0].lat, data[0].lon], 19);
-            } catch (e) { console.error(e); }
-        });
-
-        document.getElementById('deduct-mode-btn').addEventListener('click', toggleDeductMode);
-        document.getElementById('undo-btn').addEventListener('click', undoLast);
-        document.getElementById('capture-view-btn').addEventListener('click', () => {
-            clearPins();
-            const b = map.getBounds();
-            addPoint(b.getNorthWest().lat, b.getNorthWest().lng);
-            addPoint(b.getNorthEast().lat, b.getNorthEast().lng);
-            addPoint(b.getSouthEast().lat, b.getSouthEast().lng);
-            addPoint(b.getSouthWest().lat, b.getSouthWest().lng);
-        });
-        document.getElementById('clear-map-btn').addEventListener('click', clearPins);
-        document.getElementById('depth-slider').addEventListener('input', updateShape);
-        document.getElementById('price-input').addEventListener('input', updateShape);
-
-        function setMaterial(name, depth, price) {
-            currentMaterial = name;
-            document.getElementById('mat-name-display').innerText = name;
-            document.getElementById('depth-slider').value = depth;
-            document.getElementById('price-input').value = price;
-            document.querySelectorAll('.material-btn').forEach(b => b.classList.remove('active'));
-            event.target.classList.add('active');
-            updateShape();
-        }
-
-        document.getElementById('save-btn').addEventListener('click', () => {
-            if (points.length < 3) return alert("Plot at least 3 points to save!");
-            const jobName = prompt("Project Name/Address:", document.getElementById('address-input').value || "Client " + (jobs.length + 1));
-            if (!jobName) return;
-            
-            jobs.unshift({
-                id: Date.now(),
-                name: jobName,
-                material: currentMaterial,
-                depth: currentDepth,
-                price: currentPrice,
-                area: document.getElementById('area-display').innerText,
-                volume: document.getElementById('volume-display').innerText,
-                cost: document.getElementById('cost-display').innerText,
-                date: new Date().toLocaleDateString(),
-                // Persistent spatial data
-                pinData: JSON.stringify(points),
-                cutoutData: JSON.stringify(cutoutPoints),
-                center: [map.getCenter().lat, map.getCenter().lng],
-                zoom: map.getZoom()
-            });
-            
-            localStorage.setItem('yardstick_jobs', JSON.stringify(jobs));
-            renderHistory();
-        });
-
-        function restoreJob(id) {
-            const job = jobs.find(j => j.id === id);
-            if (!job) return;
-            
-            clearPins();
-            
-            // Restore context
-            map.setView(job.center, job.zoom);
-            setMaterial(job.material, job.depth, job.price);
-            
-            // Re-pin spatial data
-            const savedPoints = JSON.parse(job.pinData);
-            const savedCutouts = JSON.parse(job.cutoutData);
-            
-            isDeductMode = false;
-            savedPoints.forEach(p => addPoint(p[1], p[0]));
-            
-            isDeductMode = true;
-            savedCutouts.forEach(p => addPoint(p[1], p[0]));
-            
-            isDeductMode = false;
-            document.getElementById('deduct-mode-btn').classList.remove('active-mode');
-            
-            document.getElementById('history-container').classList.add('hidden');
+            document.getElementById('cost-display').innerText = '$' + (cubicYards * 45).toLocaleString(undefined, {minimumFractionDigits: 2});
         }
 
         function renderHistory() {
@@ -354,18 +269,11 @@
                 const div = document.createElement('div');
                 div.className = "p-3 bg-slate-50 border rounded-xl flex justify-between items-center";
                 div.innerHTML = `
-                    <div class="flex-1 cursor-pointer" onclick="restoreJob(${job.id})">
-                        <div class="flex items-center gap-1">
-                            <h4 class="font-bold text-xs truncate w-32">${job.name}</h4>
-                            <svg class="text-blue-500" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                        </div>
+                    <div class="flex-1" onclick="restoreJob(${job.id})">
+                        <h4 class="font-bold text-xs truncate w-32">${job.name}</h4>
                         <p class="text-[10px] text-slate-500">${job.area} ft² • ${job.cost}</p>
-                        <p class="text-[8px] text-slate-400 uppercase font-bold">${job.date}</p>
                     </div>
-                    <div class="flex gap-2">
-                        <button onclick="restoreJob(${job.id})" class="bg-blue-100 text-blue-600 px-2 py-1 rounded-md text-[9px] font-bold">RE-PIN</button>
-                        <button onclick="deleteJob(${job.id})" class="text-slate-300 px-1">✕</button>
-                    </div>
+                    <button onclick="deleteJob(${job.id})" class="text-slate-300 px-2">✕</button>
                 `;
                 list.appendChild(div);
             });
@@ -377,28 +285,45 @@
             renderHistory();
         };
 
-        document.getElementById('history-toggle').addEventListener('click', () => document.getElementById('history-container').classList.toggle('hidden'));
-        
-        document.getElementById('gps-btn').addEventListener('click', function() {
-            if (!isRecording) {
-                isRecording = true;
-                this.classList.replace('bg-blue-600', 'bg-red-600');
-                this.querySelector('span:first-child').innerText = "Stop";
-                watchId = navigator.geolocation.watchPosition((pos) => {
-                    if (pos.coords.accuracy < 25) {
-                        addPoint(pos.coords.latitude, pos.coords.longitude);
-                        map.panTo([pos.coords.latitude, pos.coords.longitude]);
-                    }
-                }, null, { enableHighAccuracy: true });
-            } else {
-                isRecording = false;
-                this.classList.replace('bg-red-600', 'bg-blue-600');
-                this.querySelector('span:first-child').innerText = "Walk";
-                navigator.geolocation.clearWatch(watchId);
+        document.getElementById('manual-drop-btn').addEventListener('click', dropPinAtCenter);
+        document.getElementById('undo-btn').addEventListener('click', () => {
+            if (isDeductMode && cutoutPoints.length > 0) {
+                cutoutPoints.pop();
+                map.removeLayer(cutoutMarkers.pop());
+            } else if (!isDeductMode && points.length > 0) {
+                points.pop();
+                map.removeLayer(markers.pop());
             }
+            updateShape();
+        });
+
+        document.getElementById('deduct-mode-btn').addEventListener('click', function() {
+            isDeductMode = !isDeductMode;
+            this.classList.toggle('active-mode');
+        });
+
+        document.getElementById('clear-map-btn').addEventListener('click', () => {
+            points = []; markers.forEach(m => map.removeLayer(m)); markers = [];
+            cutoutPoints = []; cutoutMarkers.forEach(m => map.removeLayer(m)); cutoutMarkers = [];
+            updateShape();
+        });
+
+        document.getElementById('search-btn').addEventListener('click', async () => {
+            const query = document.getElementById('address-input').value;
+            if(!query) return;
+            try {
+                const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`);
+                const data = await res.json();
+                if(data.length > 0) map.setView([data[0].lat, data[0].lon], 20);
+            } catch (e) { console.error(e); }
+        });
+
+        document.getElementById('history-toggle').addEventListener('click', () => {
+            document.getElementById('history-container').classList.toggle('hidden');
         });
 
         window.onload = initMap;
     </script>
 </body>
 </html>
+
