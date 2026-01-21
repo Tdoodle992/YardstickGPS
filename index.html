@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <title>YardStick Landscaping Estimator</title>
+    
+    <!-- PWA Meta Tags -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="theme-color" content="#166534">
+    
+    <!-- Leaflet CSS for Maps -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <!-- Tailwind for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Turf.js for Area Calculations -->
+    <script src="https://unpkg.com/@turf/turf@6/turf.min.js"></script>
+
+    <style>
+        #map { height: 35vh; width: 100%; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+        .glass-panel { background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(10px); }
+        .material-btn.active { background-color: #15803d; color: white; border-color: #15803d; }
+        input[type="number"] { -moz-appearance: textfield; }
+        input::-webkit-outer-spin-button, input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+        .history-panel { max-height: 30vh; overflow-y: auto; }
+        
+        /* Smooth transitions for PWA feel */
+        .transition-all { transition: all 0.2s ease-in-out; }
+    </style>
+</head>
+<body class="bg-gray-50 h-screen flex flex-col">
+
+    <!-- Header -->
+    <div class="bg-green-800 text-white p-4 pt-8 shadow-md flex justify-between items-center">
+        <div>
+            <h1 class="text-xl font-bold">YardStick PRO</h1>
+            <p class="text-xs opacity-75">Professional Job Estimator</p>
+        </div>
+        <div id="gps-indicator" class="h-3 w-3 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]"></div>
+    </div>
+
+    <!-- Map Area -->
+    <div id="map" class="shadow-inner border-b border-gray-300"></div>
+
+    <!-- Controls -->
+    <div class="flex-1 p-4 flex flex-col space-y-4 overflow-y-auto">
+        
+        <!-- Quick Material Selection -->
+        <div class="grid grid-cols-3 gap-2">
+            <button onclick="setMaterial('Mulch', 3, 45)" class="material-btn active border-2 border-gray-200 py-2 rounded-lg text-sm font-bold transition-all" id="btn-mulch">Mulch</button>
+            <button onclick="setMaterial('Sod', 1, 350)" class="material-btn border-2 border-gray-200 py-2 rounded-lg text-sm font-bold transition-all" id="btn-sod">Sod</button>
+            <button onclick="setMaterial('Dirt/Rock', 4, 60)" class="material-btn border-2 border-gray-200 py-2 rounded-lg text-sm font-bold transition-all" id="btn-dirt">Fill</button>
+        </div>
+
+        <!-- Stats Card -->
+        <div class="glass-panel p-4 rounded-xl shadow-lg border border-gray-200">
+            <div class="flex justify-between items-center mb-1">
+                <span class="text-gray-500 uppercase text-[10px] font-black tracking-widest">Total Area</span>
+                <span id="area-display" class="text-lg font-mono font-bold text-green-800 tracking-tighter">0.00 sq ft</span>
+            </div>
+            
+            <div class="flex justify-between items-end border-t border-gray-100 py-2">
+                <div>
+                    <span class="text-gray-500 uppercase text-[10px] font-black tracking-widest block">Total <span id="mat-name-display">Mulch</span></span>
+                    <span id="volume-display" class="text-3xl font-mono font-black text-blue-800 leading-none">0.00</span>
+                    <span class="text-blue-800 font-bold text-sm ml-1">yd³</span>
+                </div>
+                <div class="text-right">
+                    <span class="text-gray-500 uppercase text-[10px] font-black tracking-widest block">Est. Cost</span>
+                    <span id="cost-display" class="text-2xl font-mono font-black text-green-700 leading-none">$0.00</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Inputs Row -->
+        <div class="grid grid-cols-2 gap-4">
+            <div class="space-y-1">
+                <div class="flex justify-between text-[10px] font-bold uppercase text-gray-400">
+                    <label>Depth (in)</label>
+                    <span id="depth-label" class="text-blue-600">3.0"</span>
+                </div>
+                <input type="range" id="depth-slider" min="0.5" max="12" step="0.5" value="3" 
+                       class="w-full h-3 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-green-700">
+            </div>
+            <div class="space-y-1">
+                <label class="text-[10px] font-bold uppercase text-gray-400 block">Price / yd³</label>
+                <div class="relative">
+                    <span class="absolute left-3 top-2 text-gray-400">$</span>
+                    <input type="number" id="price-input" value="45" 
+                           class="w-full bg-white border border-gray-200 rounded-lg py-1.5 pl-6 pr-2 font-bold text-gray-700 focus:ring-2 focus:ring-green-500 outline-none transition-all">
+                </div>
+            </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="grid grid-cols-2 gap-3 pt-1">
+            <button id="gps-btn" class="bg-blue-700 text-white font-bold py-3 rounded-xl shadow-md transition-all active:scale-95 flex items-center justify-center space-x-2">
+                <span id="gps-text">📍 Start Path</span>
+            </button>
+            <button id="save-btn" class="bg-green-700 text-white font-bold py-3 rounded-xl shadow-md transition-all active:scale-95 flex items-center justify-center space-x-2">
+                <span>💾 Save Job</span>
+            </button>
+            <button id="clear-btn" class="bg-gray-100 border border-gray-300 text-gray-600 font-bold py-3 rounded-xl active:scale-95">
+                Clear Map
+            </button>
+            <button id="history-toggle" class="bg-white border border-blue-700 text-blue-700 font-bold py-3 rounded-xl active:scale-95">
+                📜 History
+            </button>
+        </div>
+
+        <!-- History Section (Hidden by default) -->
+        <div id="history-container" class="hidden border-t pt-4 space-y-2 pb-8">
+            <h3 class="text-xs font-black uppercase text-gray-400 tracking-widest">Saved Jobs</h3>
+            <div id="history-list" class="history-panel space-y-2">
+                <!-- Items added here via JS -->
+            </div>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        let map, polygon, points = [], markers = [];
+        let isRecording = false, watchId = null;
+        let currentMaterial = "Mulch";
+        let jobs = JSON.parse(localStorage.getItem('yardstick_jobs') || '[]');
+
+        function initMap() {
+            // Initializing with Jacksonville coordinates as fallback
+            map = L.map('map', { zoomControl: false }).setView([30.3322, -81.6557], 18);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { 
+                maxZoom: 20,
+                attribution: '© OSM'
+            }).addTo(map);
+            
+            map.on('click', (e) => addPoint(e.latlng.lat, e.latlng.lng));
+            
+            // Auto-locate on start
+            map.locate({setView: true, maxZoom: 18});
+            renderHistory();
+        }
+
+        function setMaterial(name, depth, price) {
+            currentMaterial = name;
+            document.getElementById('mat-name-display').innerText = name;
+            document.getElementById('depth-slider').value = depth;
+            document.getElementById('price-input').value = price;
+            document.querySelectorAll('.material-btn').forEach(btn => btn.classList.remove('active'));
+            if(name === 'Mulch') document.getElementById('btn-mulch').classList.add('active');
+            if(name === 'Sod') document.getElementById('btn-sod').classList.add('active');
+            if(name === 'Dirt/Rock') document.getElementById('btn-dirt').classList.add('active');
+            updateShape();
+        }
+
+        function addPoint(lat, lng) {
+            points.push([lng, lat]);
+            const marker = L.circleMarker([lat, lng], {
+                radius: 6, fillColor: "#166534", color: "#fff", weight: 2, opacity: 1, fillOpacity: 0.9
+            }).addTo(map);
+            markers.push(marker);
+            updateShape();
+        }
+
+        function updateShape() {
+            if (points.length < 3) {
+                document.getElementById('area-display').innerText = '0.00 sq ft';
+                document.getElementById('volume-display').innerText = '0.00';
+                document.getElementById('cost-display').innerText = '$0.00';
+                return;
+            }
+            const poly = turf.polygon([[...points, points[0]]]);
+            const areaSqFt = turf.area(poly) * 10.7639;
+            document.getElementById('area-display').innerText = areaSqFt.toFixed(2) + ' sq ft';
+
+            if (polygon) map.removeLayer(polygon);
+            polygon = L.polygon(points.map(p => [p[1], p[0]]), {
+                color: '#166534', fillColor: '#4ade80', fillOpacity: 0.4, weight: 3
+            }).addTo(map);
+
+            const depth = document.getElementById('depth-slider').value;
+            const price = document.getElementById('price-input').value;
+            document.getElementById('depth-label').innerText = depth + '"';
+            
+            const cubicYards = (areaSqFt * (depth / 12)) / 27;
+            const totalCost = cubicYards * price;
+
+            document.getElementById('volume-display').innerText = cubicYards.toFixed(2);
+            document.getElementById('cost-display').innerText = '$' + totalCost.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        }
+
+        document.getElementById('gps-btn').addEventListener('click', function() {
+            const btn = this;
+            const indicator = document.getElementById('gps-indicator');
+            if (!isRecording) {
+                if (!navigator.geolocation) return alert("GPS not available");
+                isRecording = true;
+                btn.innerHTML = "🛑 Stop Path";
+                btn.classList.replace('bg-blue-700', 'bg-red-600');
+                indicator.classList.replace('bg-red-500', 'bg-green-500');
+                indicator.classList.add('animate-pulse');
+                
+                watchId = navigator.geolocation.watchPosition((pos) => {
+                    const { latitude, longitude, accuracy } = pos.coords;
+                    // Filter out bad signals
+                    if (accuracy < 20) {
+                        addPoint(latitude, longitude);
+                        map.panTo([latitude, longitude]);
+                    }
+                }, (err) => {
+                    console.error(err);
+                    alert("GPS Error. Check your location settings.");
+                }, { 
+                    enableHighAccuracy: true,
+                    maximumAge: 1000,
+                    timeout: 5000
+                });
+            } else {
+                isRecording = false;
+                btn.innerHTML = "📍 Start Path";
+                btn.classList.replace('bg-red-600', 'bg-blue-700');
+                indicator.classList.replace('bg-green-500', 'bg-red-500');
+                indicator.classList.remove('animate-pulse');
+                navigator.geolocation.clearWatch(watchId);
+            }
+        });
+
+        document.getElementById('save-btn').addEventListener('click', () => {
+            if (points.length < 3) return alert("Plot an area first!");
+            const jobName = prompt("Enter a name for this job:", "Job " + (jobs.length + 1));
+            if (!jobName) return;
+
+            const job = {
+                id: Date.now(),
+                name: jobName,
+                material: currentMaterial,
+                area: document.getElementById('area-display').innerText,
+                volume: document.getElementById('volume-display').innerText,
+                cost: document.getElementById('cost-display').innerText,
+                date: new Date().toLocaleDateString()
+            };
+
+            jobs.unshift(job);
+            localStorage.setItem('yardstick_jobs', JSON.stringify(jobs));
+            renderHistory();
+            alert("Job saved to history!");
+        });
+
+        function renderHistory() {
+            const list = document.getElementById('history-list');
+            list.innerHTML = jobs.length === 0 ? '<p class="text-gray-400 text-xs italic">No saved jobs yet.</p>' : '';
+            jobs.forEach(job => {
+                const div = document.createElement('div');
+                div.className = "p-3 bg-white border border-gray-200 rounded-lg shadow-sm flex justify-between items-center transition-all active:bg-gray-50";
+                div.innerHTML = `
+                    <div class="flex-1">
+                        <div class="flex justify-between items-start">
+                            <h4 class="font-bold text-gray-800 text-sm truncate w-32">${job.name}</h4>
+                            <span class="text-[9px] text-gray-400">${job.date}</span>
+                        </div>
+                        <p class="text-[10px] text-gray-500">${job.material} • ${job.area}</p>
+                        <div class="flex justify-between items-center mt-1">
+                             <span class="text-xs font-bold text-blue-600">${job.volume} yd³</span>
+                             <span class="text-sm font-black text-green-700">${job.cost}</span>
+                        </div>
+                    </div>
+                    <button onclick="deleteJob(${job.id})" class="ml-4 text-gray-300 hover:text-red-500 p-2">✕</button>
+                `;
+                list.appendChild(div);
+            });
+        }
+
+        window.deleteJob = (id) => {
+            if(!confirm("Delete this record?")) return;
+            jobs = jobs.filter(j => j.id !== id);
+            localStorage.setItem('yardstick_jobs', JSON.stringify(jobs));
+            renderHistory();
+        };
+
+        document.getElementById('history-toggle').addEventListener('click', () => {
+            const container = document.getElementById('history-container');
+            container.classList.toggle('hidden');
+            if (!container.classList.contains('hidden')) {
+                container.scrollIntoView({ behavior: 'smooth' });
+            }
+        });
+
+        document.getElementById('depth-slider').addEventListener('input', updateShape);
+        document.getElementById('price-input').addEventListener('input', updateShape);
+        document.getElementById('clear-btn').addEventListener('click', () => {
+            if(!confirm("Clear current measurement?")) return;
+            points = []; markers.forEach(m => map.removeLayer(m)); markers = [];
+            if (polygon) map.removeLayer(polygon); updateShape();
+        });
+
+        // Simple Service Worker for basic caching
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('data:text/javascript;base64,c2VsZi5hZGRFdmVudExpc3RlbmVyKCdpbnN0YWxsJywgKGV2ZW50KSA9PiB7ZXZlbnQud2FpdFVudGlsKGNhY2hlcy5vcGVuKCd5YXJkc3RpY2stdjEnKS50aGVuKGNhY2hlID0+IGNhY2hlLmFkZEFsbChbJy8nXSkpKTt9KTs=');
+        }
+
+        window.onload = initMap;
+    </script>
+</body>
+</html>
